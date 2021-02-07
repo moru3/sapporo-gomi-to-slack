@@ -14,7 +14,7 @@ app = Chalice(app_name='sapporo-gomi')
 #     result = get_target_gomi_phrase()
 #     return {'result': result}
 
-@app.schedule(Cron(0, 11, '?', '*', '*', '*'))
+@app.schedule(Cron(0, 13, '?', '*', '*', '*'))
 def every_hour(event):
     get_target_gomi_phrase()
 
