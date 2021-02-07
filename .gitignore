@@ -1,0 +1,9 @@
+.chalice/deployments/
+.chalice/venv/
+.chalice/deployed/dev.json
+__pycache__/app.cpython-38.pyc
+vendor/certifi-2020.12.5-py2.py3-none-any.whl
+vendor/chardet-4.0.0-py2.py3-none-any.whl
+vendor/idna-2.10-py2.py3-none-any.whl
+vendor/requests-2.25.1-py2.py3-none-any.whl
+vendor/urllib3-1.26.3-py2.py3-none-any.whl

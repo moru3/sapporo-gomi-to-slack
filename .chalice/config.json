@@ -1,0 +1,13 @@
+{
+  "version": "2.0",
+  "app_name": "sapporo-gomi",
+  "stages": {
+    "dev": {
+      "api_gateway_stage": "api",
+      "environment_variables": {
+        "SLACK_WEBHOOK": "",
+        "SAPPORO_GOMI_URI": ""
+      }
+    }
+  }
+}
