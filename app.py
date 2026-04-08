@@ -129,17 +129,22 @@ def get_days_knowledge_days(target):
     if "ありません" in target:
         return []
     day_list = target.split('日、')
-    day_list = list(map(lambda line: re.sub('[^0-9]', '', line), day_list))
-    print(day_list)
-    return day_list
+    result = []
+    for d in day_list:
+        digits = re.sub('[^0-9]', '', d)
+        if digits:
+            result.append(int(digits))
+    print(result)
+    return result
 
 class Knowledge:
-    burnable = []
-    no_burnable = []
-    pla = []
-    pet = []
-    paper = []
-    kusa = []
+    def __init__(self):
+        self.burnable = []
+        self.no_burnable = []
+        self.pla = []
+        self.pet = []
+        self.paper = []
+        self.kusa = []
 
 def create_slack_body(target):
     if target == "何もない":
@@ -148,6 +153,8 @@ def create_slack_body(target):
 
 def send_slack(body):
     body = create_slack_body(body)
+    if body is None:
+        return
     url = os.environ["SLACK_WEBHOOK"]
     msg = {
         "channel": "#iwama_gomi",
