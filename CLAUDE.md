@@ -1,65 +1,66 @@
 # CLAUDE.md
 
-This file documents the codebase for AI assistants working on this repository.
+このファイルは、本リポジトリを扱うAIアシスタント向けのコードベース解説です。
 
-## Project Overview
+## プロジェクト概要
 
-**sapporo-gomi-to-slack** is a minimal AWS Lambda application that sends daily Slack notifications about the next day's garbage collection type in Sapporo, Japan.
+**sapporo-gomi-to-slack** は、札幌市のゴミ収集日を毎日Slackに通知するミニマルなAWS Lambdaアプリケーションです。
 
-- Scrapes Sapporo city's text-to-speech garbage calendar page
-- Parses Japanese natural-language HTML (e.g., "毎週月・水曜日は燃やせるごみは、...")
-- Sends a Slack message every evening (22:00 JST) with tomorrow's garbage type
+- 札幌市公式の音声読み上げ用ゴミカレンダーページをスクレイピング
+- 日本語の自然言語HTML（例：「毎週月・水曜日は燃やせるごみは、...」）を正規表現で解析
+- 毎日22時（JST）にSlackへ「明日のゴミ種別」を通知
 
-## Repository Structure
+## リポジトリ構成
 
 ```
 sapporo-gomi-to-slack/
-├── app.py               # Entire application logic (164 lines)
-├── requirements.txt     # Python dependencies (requests only)
-├── README.md            # Setup and deploy instructions (Japanese)
+├── app.py               # アプリケーション全体のロジック（164行）
+├── requirements.txt     # Python依存ライブラリ（requestsのみ）
+├── README.md            # セットアップ・デプロイ手順（日本語）
 └── .chalice/
-    └── config.json      # Chalice deployment config + env vars
+    └── config.json      # Chaliceデプロイ設定 + 環境変数
 ```
 
-There are no subdirectories, no tests, and no CI/CD configuration.
+サブディレクトリ・テスト・CI/CD設定は存在しません。
 
-## Tech Stack
+## 技術スタック
 
-- **Runtime**: Python 3 on AWS Lambda
-- **Framework**: [AWS Chalice](https://aws.github.io/chalice/index) — handles Lambda packaging and CloudWatch Events scheduling
-- **Trigger**: CloudWatch Events cron `Cron(0, 13, '?', '*', '*', '*')` → 13:00 UTC = 22:00 JST
-- **Dependencies**: `requests` (HTTP scraping), stdlib only for everything else
+- **ランタイム**: Python 3 on AWS Lambda
+- **フレームワーク**: [AWS Chalice](https://aws.github.io/chalice/index) — Lambdaパッケージング・CloudWatch Eventsスケジュール管理
+- **トリガー**: CloudWatch Events cron `Cron(0, 13, '?', '*', '*', '*')` → UTC 13:00 = JST 22:00
+- **依存ライブラリ**: `requests`（HTTPスクレイピング）、その他は標準ライブラリのみ
 
-## Key Environment Variables
+## 環境変数
 
-Set in `.chalice/config.json` under `stages.dev.environment_variables`:
+`.chalice/config.json` の `stages.dev.environment_variables` に設定します。
 
-| Variable | Description |
+| 変数名 | 説明 |
 |---|---|
-| `SLACK_WEBHOOK` | Slack incoming webhook URL |
-| `SAPPORO_GOMI_URI` | URL of the Sapporo city garbage calendar text-to-speech page |
+| `SLACK_WEBHOOK` | SlackのIncoming Webhook URL |
+| `SAPPORO_GOMI_URI` | 札幌市ゴミカレンダー音声読み上げページのURL |
 
-These must be filled in before deploying. They are intentionally left blank in the repository (not committed with real values).
+デプロイ前に必ず設定が必要です。実際の値はリポジトリにコミットしないでください。
 
-## Deployment
+## デプロイ手順
 
-Requires the AWS CLI and Chalice installed and configured with AWS credentials.
+AWS CLIとChaliceをインストール・設定した上で実行します。
 
 ```bash
 pip install chalice requests
 chalice deploy
 ```
 
-Chalice automatically creates the Lambda function, IAM role, and CloudWatch Events rule. The deployed Lambda is named `sapporo-gomi-dev-every_hour`.
+Chaliceが自動的にLambda関数・IAMロール・CloudWatch Eventsルールを作成します。デプロイされるLambda名は `sapporo-gomi-dev-every_hour` です。
 
-To remove:
+削除する場合：
+
 ```bash
 chalice delete
 ```
 
-## Application Logic (`app.py`)
+## アプリケーションロジック（`app.py`）
 
-### Entry point
+### エントリーポイント
 
 ```python
 @app.schedule(Cron(0, 13, '?', '*', '*', '*'))
@@ -67,60 +68,62 @@ def every_hour(event):
     get_target_gomi_phrase()
 ```
 
-### Call chain
+### 呼び出しの流れ
 
-1. `get_target_gomi_phrase()` — fetches and parses the HTML, sends Slack notification
-2. `get_year_and_month_phrase(target_date)` — returns the current month in Japanese era format (e.g., `令和7年4月`). Reiwa year = `current_year - 2018`
-3. `create_knowledge_dict(target, target_date)` — regex-strips HTML tags and progressively extracts each garbage type's schedule using `re.sub`
-4. `what_type_is_by_knowledge(knowledge, target_date)` — returns tomorrow's garbage type string
-5. `create_slack_body(target)` — formats the Slack message (returns `None` if no collection)
-6. `send_slack(body)` — POSTs to the Slack webhook
+1. `get_target_gomi_phrase()` — HTMLを取得・解析し、Slack通知を送信
+2. `get_year_and_month_phrase(target_date)` — 当月を「令和X年Y月」形式で返す（令和年 = `西暦年 - 2018`）
+3. `create_knowledge_dict(target, target_date)` — `re.sub` で逐次的に各ゴミ種別のスケジュールを抽出し `Knowledge` オブジェクトに格納
+4. `what_type_is_by_knowledge(knowledge, target_date)` — 明日のゴミ種別を文字列で返す
+5. `create_slack_body(target)` — Slackメッセージを整形（収集なしの場合は `None` を返す）
+6. `send_slack(body)` — Slack WebhookにPOST
 
-### `Knowledge` class
+### `Knowledge` クラス
 
-A simple data container with class-level list attributes:
-- `burnable` — 燃やせるごみ (every week on specific weekdays)
-- `no_burnable` — 燃やせないごみ (specific dates)
-- `pla` — 容器包装プラスチック (every week on specific weekdays)
-- `pet` — びん・缶・ペットボトル (every week on specific weekdays)
-- `paper` — 雑がみ (specific dates)
-- `kusa` — 枝・葉・草 (specific dates)
+各ゴミ種別の収集日リストを保持するデータコンテナです。
 
-### Schedule parsing helpers
+| 属性 | ゴミ種別 | スケジュール形式 |
+|---|---|---|
+| `burnable` | 燃やせるごみ | 毎週X曜日 |
+| `no_burnable` | 燃やせないごみ | 特定日 |
+| `pla` | 容器包装プラスチック | 毎週X曜日 |
+| `pet` | びん・缶・ペットボトル | 毎週X曜日 |
+| `paper` | 雑がみ | 特定日 |
+| `kusa` | 枝・葉・草 | 特定日 |
 
-- `get_days_knowledge_every_weeks(target, year, month)` — for "毎週X曜日" (recurring weekday) patterns; iterates every day of the month checking weekday name matches
-- `get_days_knowledge_days(target)` — for "X日、Y日" (specific date) patterns; returns `[]` if "ありません" is in the text
+### スケジュール解析ヘルパー
 
-### Slack message format
+- `get_days_knowledge_every_weeks(target, year, month)` — 「毎週X曜日」パターン用。その月の全日付を走査して曜日名を照合し、該当日を返す
+- `get_days_knowledge_days(target)` — 「X日、Y日」パターン用。「ありません」が含まれる場合は `[]` を返す
+
+### Slackメッセージ形式
 
 ```
-Channel: #iwama_gomi
-Username: 札幌ごみの日
-Text: 明日は、{garbage_type}です。
+チャンネル: #iwama_gomi
+ユーザー名: 札幌ごみの日
+テキスト:   明日は、{ゴミ種別}です。
 ```
 
-If `what_type_is_by_knowledge` returns `"何もない"`, no Slack message is sent.
+`what_type_is_by_knowledge` が `"何もない"` を返した場合はSlack通知を送信しません。
 
-## Known Limitations and Fragilities
+## 既知の問題・脆弱性
 
-- **No error handling**: Any network error, HTML format change, or missing env var will crash silently in Lambda (check CloudWatch Logs)
-- **Regex-based HTML parsing**: Tightly coupled to Sapporo city's current text-to-speech HTML format; will break if the format changes
-- **`Knowledge` class uses class-level (shared) attributes**: If the class were instantiated multiple times in one process, the lists would accumulate across instances
-- **`get_days_knowledge_days` returns strings, not ints**: The day values from regex are strings (e.g., `"15"`), while `get_days_knowledge_every_weeks` returns ints; `what_type_is_by_knowledge` compares against `target_date.day` (int), so the string-based comparisons for `no_burnable`, `paper`, and `kusa` may never match
-- **No tests**: There is no test suite
-- **Hardcoded Slack channel**: `#iwama_gomi` is hardcoded in `send_slack()`
-- **Commented-out REST route**: Lines 12–15 show an abandoned HTTP endpoint approach
+- **エラーハンドリングなし**: ネットワークエラー・HTML形式変更・環境変数未設定など、あらゆるエラーでサイレントクラッシュします（CloudWatch Logsを確認してください）
+- **正規表現によるHTML解析**: 札幌市の音声読み上げHTML形式に強く依存しており、形式が変わると動作しなくなります
+- **`Knowledge` クラスのクラス変数**: リストがクラス変数として定義されているため、複数インスタンス化すると値が共有されます
+- **型の不一致バグ**: `get_days_knowledge_days` は文字列のリストを返すのに対し、`what_type_is_by_knowledge` では `target_date.day`（整数）と比較します。そのため `no_burnable`・`paper`・`kusa` の判定が常に失敗する可能性があります
+- **テストなし**: テストスイートが存在しません
+- **Slackチャンネルのハードコード**: `#iwama_gomi` が `send_slack()` にハードコードされています
+- **コメントアウトされたRESTルート**: 12〜15行目にある `@app.route('/')` は廃止されたアプローチの名残です
 
-## Conventions
+## コーディング規約
 
-- All user-facing strings (log messages, function docstrings) are in Japanese
-- Debugging via `print()` — visible in CloudWatch Logs
-- No logging framework; no structured logging
-- Single-file application — keep all logic in `app.py`
+- ユーザー向け文字列・docstring・ログ出力はすべて日本語
+- デバッグは `print()` で実施（CloudWatch Logsで確認可能）
+- ロギングフレームワークは使用しない
+- ロジックはすべて `app.py` 1ファイルに集約する
 
-## Development Notes
+## ローカル開発メモ
 
-- There is no local run mode; the Lambda handler requires real environment variables and a live Sapporo city URL
-- To test locally, set environment variables and call `get_target_gomi_phrase()` directly in a Python REPL
-- The `.gitignore` excludes `.chalice/deployments/`, `.chalice/venv/`, and `vendor/` — do not commit those
-- Do not commit real values for `SLACK_WEBHOOK` or `SAPPORO_GOMI_URI` to the repository
+- ローカル実行モードはありません。動作確認は環境変数を設定した上でPython REPLから `get_target_gomi_phrase()` を直接呼び出してください
+- `.gitignore` により `.chalice/deployments/`・`.chalice/venv/`・`vendor/` はGit管理外です。これらはコミットしないでください
+- `SLACK_WEBHOOK` および `SAPPORO_GOMI_URI` の実際の値はリポジトリにコミットしないでください
