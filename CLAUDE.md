@@ -7,7 +7,7 @@
 **sapporo-gomi-to-slack** は、札幌市のゴミ収集日を毎日Slackに通知するミニマルなAWS Lambdaアプリケーションです。
 
 - 札幌市公式の音声読み上げ用ゴミカレンダーページをスクレイピング
-- 日本語の自然言語HTML（例：「毎週月・水曜日は燃やせるごみは、...」）を正規表現で解析
+- 日本語の自然言語HTML（全月共通の「燃やせるごみは、毎週火曜日と金曜日です。…」行と、月ごとの「令和X年Y月の、雑がみは…」行）を正規表現で解析
 - 毎日22時（JST）にSlackへ「明日のゴミ種別」を通知
 
 ## リポジトリ構成
@@ -72,7 +72,7 @@ def every_hour(event):
 
 1. `get_target_gomi_phrase()` — HTMLを取得・解析し、Slack通知を送信
 2. `get_year_and_month_phrase(target_date)` — 当月を「令和X年Y月」形式で返す（令和年 = `西暦年 - 2018`）
-3. `create_knowledge_dict(target, target_date)` — `re.sub` で逐次的に各ゴミ種別のスケジュールを抽出し `Knowledge` オブジェクトに格納
+3. `create_knowledge_dict(target, target_date)` — 共通行＋当月行から `re.search` で各ゴミ種別のスケジュールを抽出し `Knowledge` オブジェクトに格納（年末年始の収集なし期間は毎週収集のごみから除外）
 4. `what_type_is_by_knowledge(knowledge, target_date)` — 明日のゴミ種別を文字列で返す
 5. `create_slack_body(target)` — Slackメッセージを整形（収集なしの場合は `None` を返す）
 6. `send_slack(body)` — Slack WebhookにPOST
@@ -107,10 +107,8 @@ def every_hour(event):
 
 ## 既知の問題・脆弱性
 
-- **エラーハンドリングなし**: ネットワークエラー・HTML形式変更・環境変数未設定など、あらゆるエラーでサイレントクラッシュします（CloudWatch Logsを確認してください）
+- **エラー時はSlackに失敗通知**: `every_hour` で例外を捕捉し、Slackへ失敗メッセージを送ります（詳細はCloudWatch Logs）。カレンダーは毎年9月頃に新年度版へ差し替わるため、形式変更に注意してください
 - **正規表現によるHTML解析**: 札幌市の音声読み上げHTML形式に強く依存しており、形式が変わると動作しなくなります
-- **`Knowledge` クラスのクラス変数**: リストがクラス変数として定義されているため、複数インスタンス化すると値が共有されます
-- **型の不一致バグ**: `get_days_knowledge_days` は文字列のリストを返すのに対し、`what_type_is_by_knowledge` では `target_date.day`（整数）と比較します。そのため `no_burnable`・`paper`・`kusa` の判定が常に失敗する可能性があります
 - **テストなし**: テストスイートが存在しません
 - **Slackチャンネルのハードコード**: `#iwama_gomi` が `send_slack()` にハードコードされています
 - **コメントアウトされたRESTルート**: 12〜15行目にある `@app.route('/')` は廃止されたアプローチの名残です
